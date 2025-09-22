@@ -4,14 +4,14 @@ declare(strict_types=1);
 
 namespace Rhinox\JsonApi\Tests;
 
-use Rhinox\JsonApi\Serializer;
 use PHPUnit\Framework\TestCase;
 use Rhinox\JsonApi\Tests\Example\TestEntity;
 use Rhinox\JsonApi\Tests\Example\TestEntitySerializer;
+use Rhinox\JsonApi\Tests\Example\TestRelatedEntity;
 
 class SerializerTest extends TestCase
 {
-    public function testSerializeObject(): void
+    public function testSerializeSingle(): void
     {
         $entity = new TestEntity(2, 'Test Object');
         $serializer = new TestEntitySerializer();
@@ -23,11 +23,11 @@ class SerializerTest extends TestCase
         $this->assertEquals(['name' => 'Test Object'], $result['data']['attributes']);
     }
 
-    public function testSerializeCollection(): void
+    public function testSerializeMultiple(): void
     {
         $entities = [
             new TestEntity(1, 'First'),
-            new TestEntity(2, 'Second')
+            new TestEntity(2, 'Second'),
         ];
         $serializer = new TestEntitySerializer();
         $result = $serializer->serializeMultiple($entities);
@@ -69,5 +69,20 @@ class SerializerTest extends TestCase
         $result = $serializer->serializeSingle($entity);
 
         $this->assertEquals('value', $result['meta']['custom']);
+    }
+
+    public function testSerializeRelationship(): void
+    {
+        $related = new TestRelatedEntity(5, 'Child');
+        $entity = new TestEntity(2, 'Parent', $related);
+        $serializer = new TestEntitySerializer();
+        $serializer->setIncluded(null);
+        $result = $serializer->serializeSingle($entity);
+
+        $this->assertArrayHasKey('relationships', $result['data']);
+        $this->assertArrayHasKey('related', $result['data']['relationships']);
+        $this->assertArrayHasKey('data', $result['data']['relationships']['related']);
+        $this->assertEquals('5', $result['data']['relationships']['related']['data']['id']);
+        $this->assertEquals('TestRelatedEntity', $result['data']['relationships']['related']['data']['type']);
     }
 }

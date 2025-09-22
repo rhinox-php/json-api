@@ -6,11 +6,21 @@ namespace Rhinox\JsonApi;
 
 use Rhinox\JsonApi\Exception\SerializerException;
 
-class Serializer implements \JsonSerializable
+abstract class Serializer implements \JsonSerializable
 {
     protected ?array $meta = null;
     protected ?array $included = [];
     protected Define $define;
+
+    public function defineAttributes(): iterable
+    {
+        return [];
+    }
+
+    public function defineRelationships(): iterable
+    {
+        return [];
+    }
 
     public function __construct()
     {
@@ -79,41 +89,30 @@ class Serializer implements \JsonSerializable
                     'relationships' => [],
                 ];
 
-                foreach ($serializer->iterateRelationships($entity) ?: [] as $relationshipName => $relationshipDefs) {
-                    [$relatedSerializerClass, $relatedEntitiesCallback, $constructorParameters] = $relationshipDefs + [null, null, []];
+                foreach ($serializer->iterateRelationships($entity) ?: [] as $relationshipName => $relationshipDefintion) {
+                    if ($this->isIncluded($type, $relationshipDefintion)) {
+                        $relatedEntities = $relationshipDefintion->getRelatedEntities($entity);
+                        if ($relationshipDefintion->isSingle()) {
+                            $relatedEntities = [$relatedEntities];
+                        }
 
-                    if ($this->isIncluded($type, $relationshipName)) {
-                        $relatedEntities = $relatedEntitiesCallback();
-
-                        if (!is_iterable($relatedEntities)) {
-                            $relatedEntity = $relatedEntities;
+                        foreach ($relatedEntities as $relatedEntity) {
                             if (!$relatedEntity) {
                                 continue;
                             }
 
-                            $relatedSerializer = new $relatedSerializerClass($relatedEntity, null, ...$constructorParameters);
+                            $relatedSerializerClass = $relationshipDefintion->getSerializerClass();
+                            $relatedSerializer = new $relatedSerializerClass();
                             $relatedSerializer->setIncluded($this->included);
 
-                            $fetchedEntities[$includedKey]['relationships'][$relationshipName] = [
-                                'data' => [
-                                    'id' => (string) $relatedSerializer->getId($relatedEntity),
-                                    'type' => $relatedSerializer->getType($relatedEntity),
-                                ],
-                            ];
-
-                            $relatedIncludedKey = $relatedSerializer->getType($relatedEntity) . ':' . $relatedSerializer->getId($relatedEntity);
-                            if (!isset($fetchedEntities[$relatedIncludedKey])) {
-                                $stack[] = [$relatedSerializer, $relatedEntity];
-                            }
-                        } else {
-                            foreach ($relatedEntities as $relatedEntity) {
-                                if (!$relatedEntity) {
-                                    continue;
-                                }
-
-                                $relatedSerializer = new $relatedSerializerClass($relatedEntity, null, ...$constructorParameters);
-                                $relatedSerializer->setIncluded($this->included);
-
+                            if ($relationshipDefintion->isSingle()) {
+                                $fetchedEntities[$includedKey]['relationships'][$relationshipName] = [
+                                    'data' => [
+                                        'id' => (string) $relatedSerializer->getId($relatedEntity),
+                                        'type' => $relatedSerializer->getType($relatedEntity),
+                                    ],
+                                ];
+                            } else {
                                 if (!isset($fetchedEntities[$includedKey]['relationships'][$relationshipName])) {
                                     $fetchedEntities[$includedKey]['relationships'][$relationshipName] = [
                                         'data' => [],
@@ -124,11 +123,11 @@ class Serializer implements \JsonSerializable
                                     'id' => (string) $relatedSerializer->getId($relatedEntity),
                                     'type' => $relatedSerializer->getType($relatedEntity),
                                 ];
+                            }
 
-                                $relatedIncludedKey = $relatedSerializer->getType($relatedEntity) . ':' . $relatedSerializer->getId($relatedEntity);
-                                if (!isset($fetchedEntities[$relatedIncludedKey])) {
-                                    $stack[] = [$relatedSerializer, $relatedEntity];
-                                }
+                            $relatedIncludedKey = $relatedSerializer->getType($relatedEntity) . ':' . $relatedSerializer->getId($relatedEntity);
+                            if (!isset($fetchedEntities[$relatedIncludedKey])) {
+                                $stack[] = [$relatedSerializer, $relatedEntity];
                             }
                         }
                     }
@@ -212,9 +211,11 @@ class Serializer implements \JsonSerializable
         return $result;
     }
 
-    protected function iterateRelationships($entity): ?iterable
+    protected function iterateRelationships($entity): iterable
     {
-        return null;
+        foreach ($this->defineRelationships() as $key => $definition) {
+            yield $key => $definition;
+        }
     }
 
     protected function validateEntity($entity): bool
@@ -245,13 +246,13 @@ class Serializer implements \JsonSerializable
         }
     }
 
-    protected function isIncluded(string $type, string $relationshipName): bool
+    protected function isIncluded(string $type, $relationshipDefintion): bool
     {
         if ($this->included === null) {
             return true;
         }
 
-        return in_array($type . '.' . $relationshipName, $this->included);
+        return in_array($type . '.' . $relationshipDefintion->getName(), $this->included);
     }
 
     public function setMeta(array $meta): static

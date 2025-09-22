@@ -13,4 +13,9 @@ class Define
     {
         yield $name => new StringDefinition($name);
     }
+
+    public function single(string $name, string $serializerClass): \Generator
+    {
+        yield $name => new Definitions\SingleDefinition($name, $serializerClass);
+    }
 }

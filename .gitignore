@@ -1,0 +1,27 @@
+# Composer
+/vendor/
+composer.lock
+
+# PHPUnit
+.phpunit.result.cache
+/coverage/
+
+# PHPStan
+.phpstan.cache
+
+# PHP CS Fixer
+.php-cs-fixer.cache
+
+# IDE
+/.idea/
+/.vscode/
+/.history/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude
+*claude*

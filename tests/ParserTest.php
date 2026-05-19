@@ -25,7 +25,7 @@ class ParserTest extends TestCase
                 }
             }
         JSON;
-        $body = new InputData(json_decode($jsonApi, true));
+        $body = new InputData(json_decode($jsonApi, false));
 
         $serializer = new TestEntitySerializer();
         $parser = new Parser($serializer);

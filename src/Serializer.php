@@ -89,10 +89,10 @@ abstract class Serializer implements \JsonSerializable
                     'relationships' => [],
                 ];
 
-                foreach ($serializer->iterateRelationships($entity) ?: [] as $relationshipName => $relationshipDefintion) {
-                    if ($this->isIncluded($type, $relationshipDefintion)) {
-                        $relatedEntities = $relationshipDefintion->getRelatedEntities($entity);
-                        if ($relationshipDefintion->isSingle()) {
+                foreach ($serializer->iterateRelationships($entity) ?: [] as $relationshipName => $relationshipDefinition) {
+                    if ($this->isIncluded($type, $relationshipDefinition)) {
+                        $relatedEntities = $relationshipDefinition->getRelatedEntities($entity);
+                        if ($relationshipDefinition->isSingle()) {
                             $relatedEntities = [$relatedEntities];
                         }
 
@@ -101,11 +101,11 @@ abstract class Serializer implements \JsonSerializable
                                 continue;
                             }
 
-                            $relatedSerializerClass = $relationshipDefintion->getSerializerClass();
+                            $relatedSerializerClass = $relationshipDefinition->getSerializerClass();
                             $relatedSerializer = new $relatedSerializerClass();
                             $relatedSerializer->setIncluded($this->included);
 
-                            if ($relationshipDefintion->isSingle()) {
+                            if ($relationshipDefinition->isSingle()) {
                                 $fetchedEntities[$includedKey]['relationships'][$relationshipName] = [
                                     'data' => [
                                         'id' => (string) $relatedSerializer->getId($relatedEntity),
@@ -246,13 +246,13 @@ abstract class Serializer implements \JsonSerializable
         }
     }
 
-    protected function isIncluded(string $type, $relationshipDefintion): bool
+    protected function isIncluded(string $type, $relationshipDefinition): bool
     {
         if ($this->included === null) {
             return true;
         }
 
-        return in_array($type . '.' . $relationshipDefintion->getName(), $this->included);
+        return in_array($type . '.' . $relationshipDefinition->getName(), $this->included);
     }
 
     public function setMeta(array $meta): static

@@ -5,11 +5,10 @@ declare(strict_types=1);
 namespace Rhinox\JsonApi;
 
 use Rhino\InputData\InputData;
-use Rhinox\JsonApi\Constraints\JsonApiList;
 use Rhinox\JsonApi\Constraints\JsonApiObject;
 use Rhinox\JsonApi\Constraints\KnownKeys;
 use Rhinox\JsonApi\Constraints\RequiredKeys;
-use Rhinox\JsonApi\Exception\SerializerException;
+use Rhinox\JsonApi\Exception\JsonApiException;
 use Symfony\Component\Validator\Constraint;
 use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\Validator\ConstraintViolationListInterface;
@@ -53,7 +52,10 @@ class Parser
             $definition = $this->definitionObject($definition);
             if (!$inputAttributes->exists($attributeName)) {
                 if ($definition->isRequired()) {
-                    throw new SerializerException(sprintf('JSON:API attribute "%s" is required', $attributeName));
+                    throw $this->error(
+                        sprintf('JSON:API attribute "%s" is required', $attributeName),
+                        'attributes',
+                    );
                 }
                 continue;
             }
@@ -81,7 +83,10 @@ class Parser
             $definition = $this->definitionObject($definition);
             if (!$relationships->exists($relationshipName)) {
                 if (method_exists($definition, 'isRequired') && $definition->isRequired()) {
-                    throw new SerializerException(sprintf('JSON:API relationship "%s" is required', $relationshipName));
+                    throw $this->error(
+                        sprintf('JSON:API relationship "%s" is required', $relationshipName),
+                        'relationships',
+                    );
                 }
                 continue;
             }
@@ -108,10 +113,10 @@ class Parser
         InputData $included,
     ): array {
         if (!is_subclass_of($serializerClass, Serializer::class)) {
-            throw new SerializerException(sprintf('Included serializer "%s" must extend %s', $serializerClass, Serializer::class));
+            throw $this->error(sprintf('Included serializer "%s" must extend %s', $serializerClass, Serializer::class), 'included');
         }
         if (!class_exists($entityClass)) {
-            throw new SerializerException(sprintf('Included entity class "%s" does not exist', $entityClass));
+            throw $this->error(sprintf('Included entity class "%s" does not exist', $entityClass), 'included');
         }
 
         $includedParser = new self(new $serializerClass(), $this->validator);
@@ -236,7 +241,7 @@ class Parser
     protected function definitionObject(mixed $definition): object
     {
         if (!is_object($definition)) {
-            throw new SerializerException('Serializer definitions must be objects');
+            throw $this->error('Serializer definitions must be objects');
         }
 
         return $definition;
@@ -250,7 +255,7 @@ class Parser
     protected function typeForClass(string $class): string
     {
         if (!class_exists($class)) {
-            throw new SerializerException(sprintf('Class "%s" does not exist', $class));
+            throw $this->error(sprintf('Class "%s" does not exist', $class));
         }
 
         return (new \ReflectionClass($class))->getShortName();
@@ -286,7 +291,7 @@ class Parser
             return;
         }
 
-        throw new SerializerException(sprintf('Invalid JSON:API %s: %s', $path, $this->formatViolations($violations)));
+        throw new JsonApiException($this->errorsFromViolations($violations, $path));
     }
 
     protected function validateInput(InputData $input, Constraint|array $constraints, string $path): void
@@ -321,13 +326,80 @@ class Parser
         ]);
     }
 
-    protected function formatViolations(ConstraintViolationListInterface $violations): string
+    protected function errorsFromViolations(ConstraintViolationListInterface $violations, string $path): array
     {
-        $messages = [];
+        $errors = [];
         foreach ($violations as $violation) {
-            $messages[] = str_replace('""', '"', $violation->getMessage());
+            $pointer = $this->pointer($path, $violation->getPropertyPath());
+            $errors[] = [
+                'status' => '422',
+                'source' => [
+                    'pointer' => $pointer,
+                ],
+                'title' => $this->titleForPointer($pointer),
+                'detail' => str_replace('""', '"', $violation->getMessage()),
+            ];
         }
 
-        return implode('; ', $messages);
+        return $errors;
+    }
+
+    protected function error(string $detail, string $path = 'document', string $status = '422'): JsonApiException
+    {
+        $pointer = $this->pointer($path);
+
+        return new JsonApiException([
+            [
+                'status' => $status,
+                'source' => [
+                    'pointer' => $pointer,
+                ],
+                'title' => $this->titleForPointer($pointer),
+                'detail' => $detail,
+            ],
+        ], $detail);
+    }
+
+    protected function pointer(string $path, string $propertyPath = ''): string
+    {
+        $parts = $path === 'document' ? [] : explode('.', $path);
+
+        if ($propertyPath !== '') {
+            foreach (explode('][', trim($propertyPath, '[]')) as $part) {
+                if ($part !== '') {
+                    $parts[] = $part;
+                }
+            }
+        }
+
+        if ($parts === []) {
+            return '';
+        }
+
+        if ($parts[0] !== 'data' && $parts[0] !== 'included') {
+            array_unshift($parts, 'data');
+        }
+
+        return '/' . implode('/', array_map($this->escapePointerPart(...), $parts));
+    }
+
+    protected function escapePointerPart(string $part): string
+    {
+        return str_replace(['~', '/'], ['~0', '~1'], $part);
+    }
+
+    protected function titleForPointer(string $pointer): string
+    {
+        if ($pointer === '/data/attributes' || str_starts_with($pointer, '/data/attributes/')) {
+            return 'Invalid Attribute';
+        }
+        if ($pointer === '/data/relationships' || str_starts_with($pointer, '/data/relationships/')) {
+            return 'Invalid Relationship';
+        }
+        if ($pointer === '' || str_starts_with($pointer, '/data')) {
+            return 'Invalid Resource';
+        }
+
+        return 'Invalid Document';
     }
 }

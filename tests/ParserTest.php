@@ -6,6 +6,7 @@ namespace Rhinox\JsonApi\Tests;
 
 use PHPUnit\Framework\TestCase;
 use Rhino\InputData\InputData;
+use Rhinox\JsonApi\Exception\JsonApiException;
 use Rhinox\JsonApi\Exception\SerializerException;
 use Rhinox\JsonApi\Parser;
 use Rhinox\JsonApi\Tests\Example\TestEntity;
@@ -50,19 +51,75 @@ class ParserTest extends TestCase
         $parser = new Parser(new TestEntitySerializer());
         $entity = new TestEntity(2);
 
-        $this->expectException(SerializerException::class);
-        $this->expectExceptionMessage('Unknown JSON:API attributes key "unknown"');
-
-        $parser->parse($entity, new InputData([
-            'data' => [
-                'type' => 'TestEntity',
-                'id' => '2',
-                'attributes' => [
-                    'name' => 'Test Object',
-                    'unknown' => 'value',
+        try {
+            $parser->parse($entity, new InputData([
+                'data' => [
+                    'type' => 'TestEntity',
+                    'id' => '2',
+                    'attributes' => [
+                        'name' => 'Test Object',
+                        'unknown' => 'value',
+                    ],
                 ],
-            ],
-        ]));
+            ]));
+        } catch (JsonApiException $exception) {
+            $this->assertSame([
+                'errors' => [
+                    [
+                        'status' => '422',
+                        'source' => [
+                            'pointer' => '/data/attributes/unknown',
+                        ],
+                        'title' => 'Invalid Attribute',
+                        'detail' => 'Unknown JSON:API attributes key "unknown"',
+                    ],
+                ],
+            ], $exception->toArray());
+            return;
+        }
+
+        $this->fail('Expected JSON:API exception.');
+    }
+
+    public function testReturnsMultipleJsonApiErrors(): void
+    {
+        $parser = new Parser(new TestEntitySerializer());
+        $entity = new TestEntity(2);
+
+        try {
+            $parser->parse($entity, new InputData([
+                'data' => [
+                    'type' => 'TestEntity',
+                    'id' => '2',
+                    'attributes' => [
+                        'unknown' => 'value',
+                    ],
+                ],
+            ]));
+        } catch (JsonApiException $exception) {
+            $this->assertSame([
+                [
+                    'status' => '422',
+                    'source' => [
+                        'pointer' => '/data/attributes/unknown',
+                    ],
+                    'title' => 'Invalid Attribute',
+                    'detail' => 'Unknown JSON:API attributes key "unknown"',
+                ],
+                [
+                    'status' => '422',
+                    'source' => [
+                        'pointer' => '/data/attributes',
+                    ],
+                    'title' => 'Invalid Attribute',
+                    'detail' => 'JSON:API attribute "name" is required',
+                ],
+            ], $exception->getErrors());
+            $this->assertSame(['errors' => $exception->getErrors()], $exception->jsonSerialize());
+            return;
+        }
+
+        $this->fail('Expected JSON:API exception.');
     }
 
     public function testRejectsTypeMismatch(): void
@@ -89,14 +146,20 @@ class ParserTest extends TestCase
         $parser = new Parser(new TestEntitySerializer());
         $entity = new TestEntity();
 
-        $this->expectException(SerializerException::class);
-        $this->expectExceptionMessage('JSON:API attribute "name" is required');
+        try {
+            $parser->parse($entity, new InputData([
+                'data' => [
+                    'type' => 'TestEntity',
+                ],
+            ]));
+        } catch (JsonApiException $exception) {
+            $this->assertSame('/data/attributes', $exception->getErrors()[0]['source']['pointer']);
+            $this->assertSame('Invalid Attribute', $exception->getErrors()[0]['title']);
+            $this->assertSame('JSON:API attribute "name" is required', $exception->getErrors()[0]['detail']);
+            return;
+        }
 
-        $parser->parse($entity, new InputData([
-            'data' => [
-                'type' => 'TestEntity',
-            ],
-        ]));
+        $this->fail('Expected JSON:API exception.');
     }
 
     public function testRejectsInvalidRelationshipType(): void

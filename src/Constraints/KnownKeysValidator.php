@@ -27,6 +27,7 @@ class KnownKeysValidator extends ConstraintValidator
 
             $this->context
                 ->buildViolation($constraint->message)
+                ->atPath('[' . $key . ']')
                 ->setParameter('{{ path }}', $constraint->path)
                 ->setParameter('{{ key }}', (string) $key)
                 ->addViolation();

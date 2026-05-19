@@ -5,8 +5,13 @@ declare(strict_types=1);
 namespace Rhinox\JsonApi;
 
 use Rhino\InputData\InputData;
+use Rhinox\JsonApi\Constraints\JsonApiList;
+use Rhinox\JsonApi\Constraints\JsonApiObject;
+use Rhinox\JsonApi\Constraints\KnownKeys;
+use Rhinox\JsonApi\Constraints\RequiredKeys;
 use Rhinox\JsonApi\Exception\SerializerException;
 use Symfony\Component\Validator\Constraint;
+use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\Validator\ConstraintViolationListInterface;
 use Symfony\Component\Validator\Validation;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
@@ -37,8 +42,12 @@ class Parser
 
     public function parseAttributes(object $entity, InputData $inputAttributes): void
     {
-        $this->assertObject($inputAttributes, 'attributes');
-        $this->assertKnownKeys($inputAttributes, $this->attributeDefinitions(), 'attributes');
+        $definitions = $this->attributeDefinitions();
+        $this->validateInput($inputAttributes, [
+            new JsonApiObject('attributes'),
+            new KnownKeys(array_keys($definitions), 'attributes'),
+            new RequiredKeys($this->requiredDefinitionNames($definitions), 'attribute'),
+        ], 'attributes');
 
         foreach ($this->serializer->defineAttributes() as $attributeName => $definition) {
             $definition = $this->definitionObject($definition);
@@ -61,8 +70,12 @@ class Parser
 
     public function parseRelationships(object $entity, InputData $relationships): void
     {
-        $this->assertObject($relationships, 'relationships');
-        $this->assertKnownKeys($relationships, $this->relationshipDefinitions(), 'relationships');
+        $definitions = $this->relationshipDefinitions();
+        $this->validateInput($relationships, [
+            new JsonApiObject('relationships'),
+            new KnownKeys(array_keys($definitions), 'relationships'),
+            new RequiredKeys($this->requiredDefinitionNames($definitions), 'relationship'),
+        ], 'relationships');
 
         foreach ($this->serializer->defineRelationships() as $relationshipName => $definition) {
             $definition = $this->definitionObject($definition);
@@ -105,14 +118,14 @@ class Parser
         $includedType = $this->typeForClass($entityClass);
 
         $result = [];
-        foreach ($this->dataArray($relationship->arr('data', []), 'relationship data') as $identifier) {
+        foreach ($relationship->arr('data') as $identifier) {
             $id = $identifier->string('id', null);
             if ($identifier->string('type', null) !== $includedType || $id === null) {
                 continue;
             }
 
             $entity = $this->findEntity($existingEntities, $id) ?? new $entityClass();
-            foreach ($this->dataArray($included, 'included') as $includedResource) {
+            foreach ($included as $includedResource) {
                 if ($includedResource->string('id', null) === $id && $includedResource->string('type', null) === $includedType) {
                     $includedParser->parseResource($entity, $includedResource);
                     $result[] = $entity;
@@ -126,109 +139,75 @@ class Parser
 
     protected function validateResource(object $entity, InputData $resource): void
     {
-        $this->assertObject($resource, 'data');
-
-        $type = $resource->string('type', null);
-        if ($type === null || $type === '') {
-            throw new SerializerException('JSON:API resource data.type is required');
-        }
-
-        $expectedType = $this->typeForEntity($entity);
-        if ($type !== $expectedType) {
-            throw new SerializerException(sprintf('JSON:API resource type must be "%s", "%s" given', $expectedType, $type));
-        }
-
-        $inputId = $resource->string('id', null);
         $entityId = $this->idForEntity($entity);
-        if ($inputId !== null && $entityId !== null && $inputId !== $entityId) {
-            throw new SerializerException(sprintf('JSON:API resource id must be "%s", "%s" given', $entityId, $inputId));
-        }
-
-        if ($resource->exists('attributes')) {
-            $this->assertObject($resource->arr('attributes'), 'attributes');
-        }
-        if ($resource->exists('relationships')) {
-            $this->assertObject($resource->arr('relationships'), 'relationships');
-        }
+        $this->validateInput($resource, [
+            new JsonApiObject('data'),
+            new Assert\Collection(
+                fields: [
+                    'id' => $entityId === null
+                        ? new Assert\Optional([new Assert\Type('scalar')])
+                        : new Assert\Optional([new Assert\IdenticalTo((string) $entityId)]),
+                    'type' => new Assert\Required([
+                        new Assert\NotBlank(message: 'JSON:API resource data.type is required'),
+                        new Assert\IdenticalTo(
+                            $this->typeForEntity($entity),
+                            message: sprintf('JSON:API resource type must be "%s", "{{ value }}" given', $this->typeForEntity($entity)),
+                        ),
+                    ]),
+                    'attributes' => new Assert\Optional([new JsonApiObject('attributes')]),
+                    'relationships' => new Assert\Optional([new JsonApiObject('relationships')]),
+                ],
+                allowExtraFields: true,
+                allowMissingFields: true,
+            ),
+        ], 'data');
     }
 
     protected function validateRelationship(string $name, object $definition, InputData $relationship): void
     {
-        $this->assertObject($relationship, 'relationships.' . $name);
-        if (!$relationship->exists('data')) {
-            throw new SerializerException(sprintf('JSON:API relationship "%s" must contain data', $name));
-        }
+        $dataConstraint = method_exists($definition, 'isSingle') && !$definition->isSingle()
+            ? new Assert\All([$this->resourceIdentifierConstraint($name, $definition)])
+            : new Assert\AtLeastOneOf([
+                new Assert\IsNull(),
+                $this->resourceIdentifierConstraint($name, $definition),
+            ]);
 
-        if (method_exists($definition, 'isSingle') && !$definition->isSingle()) {
-            foreach ($this->dataArray($relationship->arr('data', []), 'relationships.' . $name . '.data') as $identifier) {
-                $this->validateResourceIdentifier($name, $definition, $identifier);
-            }
+        $this->validateInput($relationship, [
+            new JsonApiObject('relationships.' . $name),
+            new Assert\Collection(
+                fields: [
+                    'data' => new Assert\Required([
+                        new Assert\NotNull(message: sprintf('JSON:API relationship "%s" must contain data', $name)),
+                        $dataConstraint,
+                    ]),
+                ],
+                allowExtraFields: true,
+            ),
+        ], 'relationships.' . $name);
+
+        if (!method_exists($definition, 'isSingle') || $definition->isSingle()) {
             return;
-        }
-
-        if ($relationship->raw('data') === null) {
-            return;
-        }
-
-        $this->validateResourceIdentifier($name, $definition, $relationship->arr('data', []));
-    }
-
-    protected function validateResourceIdentifier(string $name, object $definition, InputData $identifier): void
-    {
-        $this->assertObject($identifier, 'relationships.' . $name . '.data');
-
-        $id = $identifier->string('id', null);
-        $type = $identifier->string('type', null);
-        if ($id === null || $id === '' || $type === null || $type === '') {
-            throw new SerializerException(sprintf('JSON:API relationship "%s" data must contain id and type', $name));
-        }
-
-        if (method_exists($definition, 'getExpectedType')) {
-            $expectedType = $definition->getExpectedType();
-            if ($expectedType !== null && $type !== $expectedType) {
-                throw new SerializerException(sprintf('JSON:API relationship "%s" type must be "%s", "%s" given', $name, $expectedType, $type));
-            }
-        }
-    }
-
-    protected function assertObject(InputData $input, string $path): void
-    {
-        $data = $input->getData();
-        if ($data === null) {
-            return;
-        }
-        if (!is_array($data)) {
-            throw new SerializerException(sprintf('JSON:API %s must be an object', $path));
-        }
-        if ($data !== [] && array_is_list($data)) {
-            throw new SerializerException(sprintf('JSON:API %s must be an object', $path));
         }
     }
 
     protected function validateDocument(InputData $document): void
     {
-        $this->assertObject($document, 'document');
-        if (!$document->exists('data')) {
-            throw new SerializerException('JSON:API document data is required');
-        }
-        if ($document->raw('data') === null) {
-            throw new SerializerException('JSON:API document data cannot be null when parsing an entity');
-        }
-        $this->assertObject($document->arr('data'), 'data');
-
-        if ($document->exists('included')) {
-            $this->dataArray($document->arr('included'), 'included');
-        }
-    }
-
-    protected function assertKnownKeys(InputData $input, array $definitions, string $path): void
-    {
-        $data = $input->getData();
-        foreach (array_keys((array) $data) as $key) {
-            if (!array_key_exists($key, $definitions)) {
-                throw new SerializerException(sprintf('Unknown JSON:API %s key "%s"', $path, $key));
-            }
-        }
+        $this->validateInput($document, [
+            new JsonApiObject('document'),
+            new Assert\Collection(
+                fields: [
+                    'data' => new Assert\Required([
+                        new Assert\NotNull(message: 'JSON:API document data cannot be null when parsing an entity'),
+                        new JsonApiObject('data'),
+                    ]),
+                    'included' => new Assert\Optional([
+                        new Assert\Type('array'),
+                    ]),
+                ],
+                allowExtraFields: true,
+                missingFieldsMessage: 'JSON:API document data is required',
+            ),
+        ], 'document');
     }
 
     protected function attributeDefinitions(): array
@@ -241,6 +220,19 @@ class Parser
         return iterator_to_array($this->serializer->defineRelationships());
     }
 
+    protected function requiredDefinitionNames(array $definitions): array
+    {
+        $required = [];
+        foreach ($definitions as $name => $definition) {
+            $definition = $this->definitionObject($definition);
+            if (method_exists($definition, 'isRequired') && $definition->isRequired()) {
+                $required[] = $name;
+            }
+        }
+
+        return $required;
+    }
+
     protected function definitionObject(mixed $definition): object
     {
         if (!is_object($definition)) {
@@ -248,16 +240,6 @@ class Parser
         }
 
         return $definition;
-    }
-
-    protected function dataArray(InputData $input, string $path): array
-    {
-        $data = $input->getData();
-        if (!is_array($data) || !array_is_list($data)) {
-            throw new SerializerException(sprintf('JSON:API %s must be an array', $path));
-        }
-
-        return array_map(fn ($item) => new InputData(is_object($item) ? (array) $item : $item), $data);
     }
 
     protected function typeForEntity(object $entity): string
@@ -307,11 +289,43 @@ class Parser
         throw new SerializerException(sprintf('Invalid JSON:API %s: %s', $path, $this->formatViolations($violations)));
     }
 
+    protected function validateInput(InputData $input, Constraint|array $constraints, string $path): void
+    {
+        $this->assertValid($input->getData(), $constraints, $path);
+    }
+
+    protected function resourceIdentifierConstraint(string $relationshipName, object $definition): Constraint
+    {
+        $expectedType = method_exists($definition, 'getExpectedType') ? $definition->getExpectedType() : null;
+
+        return new Assert\Sequentially([
+            new JsonApiObject('relationships.' . $relationshipName . '.data'),
+            new Assert\Collection(
+                fields: [
+                    'id' => new Assert\Required([
+                        new Assert\NotBlank(message: sprintf('JSON:API relationship "%s" data must contain id and type', $relationshipName)),
+                        new Assert\Type('scalar'),
+                    ]),
+                    'type' => new Assert\Required([
+                        new Assert\NotBlank(message: sprintf('JSON:API relationship "%s" data must contain id and type', $relationshipName)),
+                        $expectedType === null
+                            ? new Assert\Type('scalar')
+                            : new Assert\IdenticalTo(
+                                $expectedType,
+                                message: sprintf('JSON:API relationship "%s" type must be "%s", "{{ value }}" given', $relationshipName, $expectedType),
+                            ),
+                    ]),
+                ],
+                allowExtraFields: true,
+            ),
+        ]);
+    }
+
     protected function formatViolations(ConstraintViolationListInterface $violations): string
     {
         $messages = [];
         foreach ($violations as $violation) {
-            $messages[] = $violation->getMessage();
+            $messages[] = str_replace('""', '"', $violation->getMessage());
         }
 
         return implode('; ', $messages);

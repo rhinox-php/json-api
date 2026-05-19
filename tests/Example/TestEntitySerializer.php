@@ -10,7 +10,7 @@ class TestEntitySerializer extends Serializer
 {
     public function defineAttributes(): iterable
     {
-        yield from $this->define->string('name');
+        yield from $this->define->string('name', required: true);
     }
 
     public function defineRelationships(): iterable

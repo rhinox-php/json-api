@@ -4,13 +4,11 @@ declare(strict_types=1);
 
 namespace Rhinox\JsonApi\Definitions;
 
-class SingleDefinition
+class ManyDefinition
 {
     public function __construct(
         private string $name,
         private string $serializerClass,
-        private bool $required = false,
-        private mixed $setter = null,
     ) {
     }
 
@@ -19,15 +17,14 @@ class SingleDefinition
         return $this->name;
     }
 
-    public function getRelatedEntities(object $entity): ?object
+    public function getRelatedEntities(object $entity): iterable
     {
-        $getter = 'get' . ucfirst($this->name);
-        return $entity->$getter();
+        return $entity->{$this->name} ?? [];
     }
 
     public function isSingle(): bool
     {
-        return true;
+        return false;
     }
 
     public function getSerializerClass(): string
@@ -43,21 +40,5 @@ class SingleDefinition
 
         $shortName = (new \ReflectionClass($this->serializerClass))->getShortName();
         return preg_replace('/Serializer$/', '', $shortName) ?? $shortName;
-    }
-
-    public function setValue(object $entity, ?string $id, ?string $type = null, mixed $relationship = null): void
-    {
-        if ($this->setter) {
-            ($this->setter)($entity, $id, $type, $relationship);
-            return;
-        }
-
-        $setter = 'set' . ucfirst($this->name) . 'Id';
-        $entity->{$setter}($id);
-    }
-
-    public function isRequired(): bool
-    {
-        return $this->required;
     }
 }

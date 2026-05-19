@@ -4,10 +4,14 @@ declare(strict_types=1);
 
 namespace Rhinox\JsonApi\Definitions;
 
+use Symfony\Component\Validator\Constraints as Assert;
+
 class StringDefinition
 {
     public function __construct(
-        private string $name
+        private string $name,
+        private bool $required = false,
+        private array $constraints = [],
     ) {
     }
 
@@ -16,13 +20,32 @@ class StringDefinition
         return $this->name;
     }
 
-    public function getValue($entity): string
+    public function getValue(object $entity): ?string
     {
-        return $entity->{$this->name};
+        $getter = 'get' . ucfirst($this->name);
+        return $entity->$getter();
     }
 
-    public function setValue($entity, string $value): void
+    public function setValue(object $entity, mixed $value): void
     {
-        $entity->{$this->name} = $value;
+        $setter = 'set' . ucfirst($this->name);
+        $entity->$setter($value === null ? null : (string) $value);
+    }
+
+    public function getConstraints(): array
+    {
+        return [
+            ...($this->required ? [new Assert\NotBlank()] : []),
+            new Assert\AtLeastOneOf([
+                new Assert\Type('scalar'),
+                new Assert\IsNull(),
+            ]),
+            ...$this->constraints,
+        ];
+    }
+
+    public function isRequired(): bool
+    {
+        return $this->required;
     }
 }

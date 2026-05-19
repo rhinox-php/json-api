@@ -7,8 +7,18 @@ namespace Rhinox\JsonApi\Tests\Example;
 class TestRelatedEntity
 {
     public function __construct(
-        public ?int $id = null,
-        public ?string $childName = null
+        private ?int $id = null,
+        private ?string $childName = null
     ) {
+    }
+
+    public function getId(): ?int
+    {
+        return $this->id;
+    }
+
+    public function getChildName(): ?string
+    {
+        return $this->childName;
     }
 }

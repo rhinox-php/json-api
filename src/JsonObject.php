@@ -20,7 +20,7 @@ class JsonObject implements \JsonSerializable, \ArrayAccess
 
     public function jsonSerialize(): mixed
     {
-        if ($this->nullWhenEmpty && empty($this->data)) {
+        if ($this->nullWhenEmpty && empty((array) $this->data)) {
             return null;
         }
         return $this->data;

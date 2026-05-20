@@ -48,6 +48,7 @@ class Parser
             new RequiredKeys($this->requiredDefinitionNames($definitions), 'attribute'),
         ], 'attributes');
 
+        $errors = [];
         foreach ($this->serializer->defineAttributes() as $attributeName => $definition) {
             $definition = $this->definitionObject($definition);
             if (!$inputAttributes->exists($attributeName)) {
@@ -62,10 +63,22 @@ class Parser
 
             $value = $inputAttributes->raw($attributeName);
             if (method_exists($definition, 'getConstraints')) {
-                $this->assertValid($value, $definition->getConstraints(), 'attributes.' . $attributeName);
+                array_push($errors, ...$this->errorsForValue($value, $definition->getConstraints(), 'attributes.' . $attributeName));
             }
+        }
+
+        if ($errors !== []) {
+            throw new JsonApiException($errors);
+        }
+
+        foreach ($this->serializer->defineAttributes() as $attributeName => $definition) {
+            $definition = $this->definitionObject($definition);
+            if (!$inputAttributes->exists($attributeName)) {
+                continue;
+            }
+
             if (method_exists($definition, 'setValue')) {
-                $definition->setValue($entity, $value);
+                $definition->setValue($entity, $inputAttributes->raw($attributeName));
             }
         }
     }
@@ -292,6 +305,16 @@ class Parser
         }
 
         throw new JsonApiException($this->errorsFromViolations($violations, $path));
+    }
+
+    protected function errorsForValue(mixed $value, Constraint|array $constraints, string $path): array
+    {
+        $violations = $this->validator->validate($value, $constraints);
+        if (count($violations) === 0) {
+            return [];
+        }
+
+        return $this->errorsFromViolations($violations, $path);
     }
 
     protected function validateInput(InputData $input, Constraint|array $constraints, string $path): void

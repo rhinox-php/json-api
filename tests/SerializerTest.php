@@ -8,6 +8,8 @@ use PHPUnit\Framework\TestCase;
 use Rhinox\JsonApi\Tests\Example\TestEntity;
 use Rhinox\JsonApi\Tests\Example\TestEntitySerializer;
 use Rhinox\JsonApi\Tests\Example\TestRelatedEntity;
+use Rhinox\JsonApi\Tests\Example\TypedEntity;
+use Rhinox\JsonApi\Tests\Example\TypedEntitySerializer;
 
 class SerializerTest extends TestCase
 {
@@ -84,5 +86,30 @@ class SerializerTest extends TestCase
         $this->assertArrayHasKey('data', $result['data']['relationships']['related']);
         $this->assertEquals('5', $result['data']['relationships']['related']['data']['id']);
         $this->assertEquals('TestRelatedEntity', $result['data']['relationships']['related']['data']['type']);
+    }
+
+    public function testSerializeTypedAttributes(): void
+    {
+        $entity = new TypedEntity(
+            7,
+            12,
+            19.95,
+            true,
+            new \DateTimeImmutable('2026-05-20 10:30:00', new \DateTimeZone('Pacific/Auckland')),
+        );
+        $serializer = new TypedEntitySerializer();
+
+        $result = $serializer->serializeSingle($entity);
+
+        $this->assertSame([
+            'quantity' => 12,
+            'price' => 19.95,
+            'active' => true,
+            'publishedAt' => [
+                'date' => '2026-05-20',
+                'time' => '10:30:00',
+                'timeZone' => 'Pacific/Auckland',
+            ],
+        ], $result['data']['attributes']);
     }
 }

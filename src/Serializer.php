@@ -10,7 +10,18 @@ abstract class Serializer implements \JsonSerializable
 {
     protected ?array $meta = null;
     protected ?array $included = [];
-    protected Define $define;
+
+    protected Define $define {
+        get {
+            if (!isset($this->define)) {
+                $this->define = new Define();
+            }
+            return $this->define;
+        }
+        // set {
+        //     $this->define = $value;
+        // }
+    }
 
     public function defineAttributes(): iterable
     {
@@ -25,7 +36,6 @@ abstract class Serializer implements \JsonSerializable
     public function __construct()
     {
         $this->meta = [];
-        $this->define = new Define();
     }
 
     public function serializeSingle($entity): array
@@ -206,7 +216,10 @@ abstract class Serializer implements \JsonSerializable
     {
         $result = [];
         foreach ($this->defineAttributes() as $key => $definition) {
-            $result[$key] = $definition->getValue($entity);
+            $value = $definition->getValue($entity);
+            if ($value !== null) {
+                $result[$key] = $value;
+            }
         }
         return $result;
     }

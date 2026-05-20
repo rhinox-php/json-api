@@ -11,6 +11,8 @@ use Rhinox\JsonApi\Exception\SerializerException;
 use Rhinox\JsonApi\Parser;
 use Rhinox\JsonApi\Tests\Example\TestEntity;
 use Rhinox\JsonApi\Tests\Example\TestEntitySerializer;
+use Rhinox\JsonApi\Tests\Example\TypedEntity;
+use Rhinox\JsonApi\Tests\Example\TypedEntitySerializer;
 
 class ParserTest extends TestCase
 {
@@ -187,5 +189,67 @@ class ParserTest extends TestCase
                 ],
             ],
         ]));
+    }
+
+    public function testParsesTypedAttributes(): void
+    {
+        $parser = new Parser(new TypedEntitySerializer());
+        $entity = new TypedEntity(7);
+
+        $parser->parse($entity, new InputData([
+            'data' => [
+                'type' => 'TypedEntity',
+                'id' => '7',
+                'attributes' => [
+                    'quantity' => '12',
+                    'price' => '19.95',
+                    'active' => true,
+                    'publishedAt' => [
+                        'date' => '2026-05-20',
+                        'time' => '10:30:00',
+                        'timeZone' => 'Pacific/Auckland',
+                    ],
+                ],
+            ],
+        ]));
+
+        $this->assertSame(12, $entity->getQuantity());
+        $this->assertSame(19.95, $entity->getPrice());
+        $this->assertTrue($entity->getActive());
+        $this->assertSame('2026-05-20 10:30:00', $entity->getPublishedAt()?->format('Y-m-d H:i:s'));
+        $this->assertSame('Pacific/Auckland', $entity->getPublishedAt()->getTimezone()->getName());
+    }
+
+    public function testRejectsInvalidTypedAttributes(): void
+    {
+        $parser = new Parser(new TypedEntitySerializer());
+        $entity = new TypedEntity(7);
+
+        try {
+            $parser->parse($entity, new InputData([
+                'data' => [
+                    'type' => 'TypedEntity',
+                    'id' => '7',
+                    'attributes' => [
+                        'quantity' => '12.5',
+                        'price' => 'not numeric',
+                        'active' => 'yes',
+                        'publishedAt' => [
+                            'date' => 'not a date',
+                            'time' => '99:99:99',
+                            'timeZone' => 'Nope/Nowhere',
+                        ],
+                    ],
+                ],
+            ]));
+        } catch (JsonApiException $exception) {
+            $this->assertSame('/data/attributes/quantity', $exception->getErrors()[0]['source']['pointer']);
+            $this->assertSame('/data/attributes/price', $exception->getErrors()[1]['source']['pointer']);
+            $this->assertSame('/data/attributes/active', $exception->getErrors()[2]['source']['pointer']);
+            $this->assertSame('/data/attributes/publishedAt', $exception->getErrors()[3]['source']['pointer']);
+            return;
+        }
+
+        $this->fail('Expected JSON:API exception.');
     }
 }

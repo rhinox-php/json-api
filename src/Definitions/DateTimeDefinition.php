@@ -56,7 +56,6 @@ class DateTimeDefinition
         return [
             ...($this->required ? [new Assert\NotBlank()] : []),
             new Assert\AtLeastOneOf([
-                new Assert\Type(\DateTimeInterface::class),
                 new Assert\Collection(
                     fields: [
                         'date' => new Assert\Required([

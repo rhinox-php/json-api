@@ -19,7 +19,8 @@ class ManyDefinition
 
     public function getRelatedEntities(object $entity): iterable
     {
-        return $entity->{$this->name} ?? [];
+        $getter = 'get' . ucfirst($this->name);
+        return $entity->{$getter}() ?? [];
     }
 
     public function isSingle(): bool

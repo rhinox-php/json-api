@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Rhinox\JsonApi\Definitions;
 
 use Rhinox\JsonApi\Access\AttributeAccess;
+use Symfony\Component\Validator\Constraint;
 
 abstract class Definition
 {
@@ -12,6 +13,7 @@ abstract class Definition
         private string $name,
         private AttributeAccess $access,
         private bool $required = false,
+        private array $constraints = [],
     ) {
     }
 
@@ -43,7 +45,7 @@ abstract class Definition
 
     public function getConstraints(): array
     {
-        return [];
+        return $this->constraints;
     }
 
     public function getName(): string

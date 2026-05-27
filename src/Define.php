@@ -8,6 +8,7 @@ use Rhinox\JsonApi\Access\AttributeAccess;
 use Rhinox\JsonApi\Definitions\BoolDefinition;
 use Rhinox\JsonApi\Definitions\DateTimeDefinition;
 use Rhinox\JsonApi\Definitions\FloatDefinition;
+use Rhinox\JsonApi\Definitions\InputDataDefinition;
 use Rhinox\JsonApi\Definitions\IntDefinition;
 use Rhinox\JsonApi\Definitions\JsonDefinition;
 use Rhinox\JsonApi\Definitions\ManyDefinition;
@@ -38,6 +39,14 @@ class Define
         Constraint|array|null $validate = null,
     ): \Generator {
         yield $name => new JsonDefinition($name, $this->access, $required, $this->constraints($validate));
+    }
+
+    public function inputData(
+        string $name,
+        bool $required = false,
+        Constraint|array|null $validate = null,
+    ): \Generator {
+        yield $name => new InputDataDefinition($name, $this->access, $required, $this->constraints($validate));
     }
 
     public function int(

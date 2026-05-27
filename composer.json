@@ -25,6 +25,7 @@
     },
     "scripts": {
         "test": "phpunit",
+        "test:coverage": "@php -d xdebug.mode=coverage vendor/bin/phpunit --coverage-text --coverage-html coverage",
         "phpstan": "phpstan analyse",
         "cs-fix": "php-cs-fixer fix",
         "cs-check": "php-cs-fixer fix --dry-run --diff"

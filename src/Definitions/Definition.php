@@ -13,7 +13,6 @@ abstract class Definition
         private string $name,
         private AttributeAccess $access,
         private bool $required = false,
-        private array $constraints = [],
     ) {
     }
 
@@ -45,7 +44,7 @@ abstract class Definition
 
     public function getConstraints(): array
     {
-        return $this->constraints;
+        return [];
     }
 
     public function getName(): string

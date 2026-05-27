@@ -28,57 +28,50 @@ class Define
     public function string(
         string $name,
         bool $required = false,
-        Constraint|array|null $validate = null,
     ): \Generator {
-        yield $name => new StringDefinition($name, $this->access, $required, $this->constraints($validate));
+        yield $name => new StringDefinition($name, $this->access, $required);
     }
 
     public function json(
         string $name,
         bool $required = false,
-        Constraint|array|null $validate = null,
     ): \Generator {
-        yield $name => new JsonDefinition($name, $this->access, $required, $this->constraints($validate));
+        yield $name => new JsonDefinition($name, $this->access, $required);
     }
 
     public function inputData(
         string $name,
         bool $required = false,
-        Constraint|array|null $validate = null,
     ): \Generator {
-        yield $name => new InputDataDefinition($name, $this->access, $required, $this->constraints($validate));
+        yield $name => new InputDataDefinition($name, $this->access, $required);
     }
 
     public function int(
         string $name,
         bool $required = false,
-        Constraint|array|null $validate = null,
     ): \Generator {
-        yield $name => new IntDefinition($name, $this->access, $required, $this->constraints($validate));
+        yield $name => new IntDefinition($name, $this->access, $required);
     }
 
     public function float(
         string $name,
         bool $required = false,
-        Constraint|array|null $validate = null,
     ): \Generator {
-        yield $name => new FloatDefinition($name, $this->access, $required, $this->constraints($validate));
+        yield $name => new FloatDefinition($name, $this->access, $required);
     }
 
     public function bool(
         string $name,
         bool $required = false,
-        Constraint|array|null $validate = null,
     ): \Generator {
-        yield $name => new BoolDefinition($name, $this->access, $required, $this->constraints($validate));
+        yield $name => new BoolDefinition($name, $this->access, $required);
     }
 
     public function dateTime(
         string $name,
         bool $required = false,
-        Constraint|array|null $validate = null,
     ): \Generator {
-        yield $name => new DateTimeDefinition($name, $this->access, $required, $this->constraints($validate));
+        yield $name => new DateTimeDefinition($name, $this->access, $required);
     }
 
     public function single(string $name, string $serializerClass, bool $required = false, ?callable $setter = null): \Generator
@@ -94,14 +87,5 @@ class Define
     public function hasMany(string $name, string $serializerClass): \Generator
     {
         yield $name => new ManyDefinition($name, $serializerClass);
-    }
-
-    private function constraints(Constraint|array|null $validate): array
-    {
-        if ($validate === null) {
-            return [];
-        }
-
-        return is_array($validate) ? $validate : [$validate];
     }
 }

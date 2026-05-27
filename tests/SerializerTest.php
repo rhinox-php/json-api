@@ -11,18 +11,36 @@ use Rhinox\JsonApi\Tests\Example\TestRelatedEntity;
 use Rhinox\JsonApi\Tests\Example\TypedEntity;
 use Rhinox\JsonApi\Tests\Example\TypedEntitySerializer;
 
+// @todo test deeply nested relationships
 class SerializerTest extends TestCase
 {
     public function testSerializeSingle(): void
     {
-        $entity = new TestEntity(2, 'Test Object');
+        $entity = new TestEntity(
+            id: 2,
+            stringTest: 'Test Object',
+            intTest: 42,
+            floatTest: 3.14,
+            boolTest: true,
+            dateTimeTest: new \DateTimeImmutable('2024-01-01 12:00:00', new \DateTimeZone('Pacific/Auckland')),
+        );
         $serializer = new TestEntitySerializer();
         $result = $serializer->serializeSingle($entity);
 
         $this->assertArrayHasKey('data', $result);
-        $this->assertEquals('2', $result['data']['id']);
-        $this->assertEquals('TestEntity', $result['data']['type']);
-        $this->assertEquals(['name' => 'Test Object'], $result['data']['attributes']);
+        $this->assertSame('2', $result['data']['id']);
+        $this->assertSame('TestEntity', $result['data']['type']);
+        $this->assertSame([
+            'stringTest' => 'Test Object',
+            'intTest' => 42,
+            'floatTest' => 3.14,
+            'boolTest' => true,
+            'dateTimeTest' => [
+                'date' => '2024-01-01',
+                'time' => '12:00:00',
+                'timeZone' => 'Pacific/Auckland',
+            ],
+        ], $result['data']['attributes']);
     }
 
     public function testSerializeMultiple(): void
@@ -37,8 +55,8 @@ class SerializerTest extends TestCase
         $this->assertArrayHasKey('data', $result);
         $this->assertIsArray($result['data']);
         $this->assertCount(2, $result['data']);
-        $this->assertEquals('1', $result['data'][0]['id']);
-        $this->assertEquals('2', $result['data'][1]['id']);
+        $this->assertSame('1', $result['data'][0]['id']);
+        $this->assertSame('2', $result['data'][1]['id']);
     }
 
     public function testSerializeNull(): void
@@ -70,13 +88,13 @@ class SerializerTest extends TestCase
         $serializer->addMeta('custom', 'value');
         $result = $serializer->serializeSingle($entity);
 
-        $this->assertEquals('value', $result['meta']['custom']);
+        $this->assertSame('value', $result['meta']['custom']);
     }
 
     public function testSerializeRelationship(): void
     {
         $related = new TestRelatedEntity(5, 'Child');
-        $entity = new TestEntity(2, 'Parent', $related);
+        $entity = new TestEntity(2, 'Parent', related: $related);
         $serializer = new TestEntitySerializer();
         $serializer->setIncluded(null);
         $result = $serializer->serializeSingle($entity);
@@ -84,8 +102,8 @@ class SerializerTest extends TestCase
         $this->assertArrayHasKey('relationships', $result['data']);
         $this->assertArrayHasKey('related', $result['data']['relationships']);
         $this->assertArrayHasKey('data', $result['data']['relationships']['related']);
-        $this->assertEquals('5', $result['data']['relationships']['related']['data']['id']);
-        $this->assertEquals('TestRelatedEntity', $result['data']['relationships']['related']['data']['type']);
+        $this->assertSame('5', $result['data']['relationships']['related']['data']['id']);
+        $this->assertSame('TestRelatedEntity', $result['data']['relationships']['related']['data']['type']);
     }
 
     public function testSerializeTypedAttributes(): void

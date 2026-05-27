@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Rhinox\JsonApi;
 
+use Rhinox\JsonApi\Access\GetterSetterAccess;
+use Rhinox\JsonApi\Definitions\Definition;
+use Rhinox\JsonApi\Definitions\StringDefinition;
 use Rhinox\JsonApi\Exception\SerializerException;
 
 abstract class Serializer implements \JsonSerializable
@@ -13,14 +16,14 @@ abstract class Serializer implements \JsonSerializable
 
     protected Define $define {
         get {
-            if (!isset($this->define)) {
-                $this->define = new Define();
-            }
-            return $this->define;
+            return $this->define ??= new Define(new GetterSetterAccess());
         }
-        // set {
-        //     $this->define = $value;
-        // }
+    }
+
+    protected Definition $idDefinition {
+        get {
+            return $this->idDefinition ??= new StringDefinition('id', $this->define->access);
+        }
     }
 
     public function defineAttributes(): iterable
@@ -182,31 +185,15 @@ abstract class Serializer implements \JsonSerializable
         return $this;
     }
 
-    protected function getId($entity): string
+    public function getId(mixed &$entity): ?string
     {
-        if ($entity instanceof SerializableInterface) {
-            return $entity->getId();
-        }
-
-        if (is_array($entity) && isset($entity['id'])) {
-            return (string) $entity['id'];
-        }
-
-        if (is_object($entity) && method_exists($entity, 'getId')) {
-            return (string) $entity->getId();
-        }
-
-        if (is_object($entity) && isset($entity->id)) {
-            return (string) $entity->id;
-        }
-
-        throw new SerializerException('Entity must implement SerializableInterface or have an id property/method');
+        return $this->idDefinition->getValue($entity);
     }
 
-    protected function getType($entity): string
+    public function getType(mixed &$entity): string
     {
-        if (is_array($entity)) {
-            return 'array';
+        if (!is_object($entity)) {
+            throw new SerializerException('Entity must be an object to determine type');
         }
 
         return (new \ReflectionClass($entity))->getShortName();
@@ -231,6 +218,7 @@ abstract class Serializer implements \JsonSerializable
         }
     }
 
+    // @todo check this
     protected function validateEntity($entity): bool
     {
         if ($entity === null) {

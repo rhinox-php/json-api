@@ -8,7 +8,11 @@ class TestEntity
 {
     public function __construct(
         private ?int $id = null,
-        private ?string $name = null,
+        private ?string $stringTest = null,
+        private ?int $intTest = null,
+        private ?float $floatTest = null,
+        private ?bool $boolTest = null,
+        private ?\DateTimeImmutable $dateTimeTest = null,
         private ?TestRelatedEntity $related = null,
         private ?string $relatedId = null,
     ) {
@@ -19,14 +23,54 @@ class TestEntity
         return $this->id;
     }
 
-    public function getName(): ?string
+    public function getStringTest(): ?string
     {
-        return $this->name;
+        return $this->stringTest;
     }
 
-    public function setName(?string $name): void
+    public function setStringTest(?string $stringTest): void
     {
-        $this->name = $name;
+        $this->stringTest = $stringTest;
+    }
+
+    public function getIntTest(): ?int
+    {
+        return $this->intTest;
+    }
+
+    public function setIntTest(?int $intTest): void
+    {
+        $this->intTest = $intTest;
+    }
+
+    public function getFloatTest(): ?float
+    {
+        return $this->floatTest;
+    }
+
+    public function setFloatTest(?float $floatTest): void
+    {
+        $this->floatTest = $floatTest;
+    }
+
+    public function getBoolTest(): ?bool
+    {
+        return $this->boolTest;
+    }
+
+    public function setBoolTest(?bool $boolTest): void
+    {
+        $this->boolTest = $boolTest;
+    }
+
+    public function getDateTimeTest(): ?\DateTimeImmutable
+    {
+        return $this->dateTimeTest;
+    }
+
+    public function setDateTimeTest(?\DateTimeImmutable $dateTimeTest): void
+    {
+        $this->dateTimeTest = $dateTimeTest;
     }
 
     public function getRelated(): ?TestRelatedEntity

@@ -26,45 +26,32 @@ class Parser
         $this->validator = $validator ?? Validation::createValidator();
     }
 
-    public function parse(object $entity, InputData $document): void
+    public function parse(mixed &$entity, InputData $document): void
     {
         $this->validateDocument($document);
         $this->parseResource($entity, $document->arr('data', []), $document);
     }
 
-    public function parseResource(object $entity, InputData $resource, ?InputData $document = null): void
+    public function parseResource(mixed &$entity, InputData $resource, ?InputData $document = null): void
     {
         $this->validateResource($entity, $resource);
         $this->parseAttributes($entity, $resource->arr('attributes', []));
         $this->parseRelationships($entity, $resource->arr('relationships', []));
     }
 
-    public function parseAttributes(object $entity, InputData $inputAttributes): void
+    public function parseAttributes(mixed &$entity, InputData $inputAttributes): void
     {
         $definitions = $this->attributeDefinitions();
-        $this->validateInput($inputAttributes, [
+        $errors = [];
+        array_push($errors, ...$this->errorsForValue($inputAttributes->getData(), [
             new JsonApiObject('attributes'),
             new KnownKeys(array_keys($definitions), 'attributes'),
             new RequiredKeys($this->requiredDefinitionNames($definitions), 'attribute'),
-        ], 'attributes');
+        ], 'attributes'));
 
-        $errors = [];
         foreach ($this->serializer->defineAttributes() as $attributeName => $definition) {
-            $definition = $this->definitionObject($definition);
-            if (!$inputAttributes->exists($attributeName)) {
-                if ($definition->isRequired()) {
-                    throw $this->error(
-                        sprintf('JSON:API attribute "%s" is required', $attributeName),
-                        'attributes',
-                    );
-                }
-                continue;
-            }
-
             $value = $inputAttributes->raw($attributeName);
-            if (method_exists($definition, 'getConstraints')) {
-                array_push($errors, ...$this->errorsForValue($value, $definition->getConstraints(), 'attributes.' . $attributeName));
-            }
+            array_push($errors, ...$this->errorsForValue($value, $definition->getConstraints(), 'attributes.' . $attributeName));
         }
 
         if ($errors !== []) {
@@ -72,18 +59,15 @@ class Parser
         }
 
         foreach ($this->serializer->defineAttributes() as $attributeName => $definition) {
-            $definition = $this->definitionObject($definition);
             if (!$inputAttributes->exists($attributeName)) {
                 continue;
             }
 
-            if (method_exists($definition, 'setValue')) {
-                $definition->setValue($entity, $inputAttributes->raw($attributeName));
-            }
+            $definition->setValue($entity, $inputAttributes->raw($attributeName));
         }
     }
 
-    public function parseRelationships(object $entity, InputData $relationships): void
+    public function parseRelationships(mixed &$entity, InputData $relationships): void
     {
         $definitions = $this->relationshipDefinitions();
         $this->validateInput($relationships, [
@@ -93,7 +77,6 @@ class Parser
         ], 'relationships');
 
         foreach ($this->serializer->defineRelationships() as $relationshipName => $definition) {
-            $definition = $this->definitionObject($definition);
             if (!$relationships->exists($relationshipName)) {
                 if (method_exists($definition, 'isRequired') && $definition->isRequired()) {
                     throw $this->error(
@@ -107,14 +90,12 @@ class Parser
             $relationship = $relationships->arr($relationshipName, []);
             $this->validateRelationship($relationshipName, $definition, $relationship);
 
-            if (method_exists($definition, 'setValue')) {
-                $definition->setValue(
-                    $entity,
-                    $relationship->string('data.id', null),
-                    $relationship->string('data.type', null),
-                    $relationship,
-                );
-            }
+            $definition->setValue(
+                $entity,
+                $relationship->string('data.id', null),
+                $relationship->string('data.type', null),
+                $relationship,
+            );
         }
     }
 
@@ -155,9 +136,10 @@ class Parser
         return $result;
     }
 
-    protected function validateResource(object $entity, InputData $resource): void
+    protected function validateResource(mixed &$entity, InputData $resource): void
     {
-        $entityId = $this->idForEntity($entity);
+        $entityId = $this->serializer->getId($entity);
+        $entityType = $this->serializer->getType($entity);
         $this->validateInput($resource, [
             new JsonApiObject('data'),
             new Assert\Collection(
@@ -168,8 +150,8 @@ class Parser
                     'type' => new Assert\Required([
                         new Assert\NotBlank(message: 'JSON:API resource data.type is required'),
                         new Assert\IdenticalTo(
-                            $this->typeForEntity($entity),
-                            message: sprintf('JSON:API resource type must be "%s", "{{ value }}" given', $this->typeForEntity($entity)),
+                            $entityType,
+                            message: sprintf('JSON:API resource type must be "%s", "{{ value }}" given', $entityType),
                         ),
                     ]),
                     'attributes' => new Assert\Optional([new JsonApiObject('attributes')]),
@@ -242,27 +224,12 @@ class Parser
     {
         $required = [];
         foreach ($definitions as $name => $definition) {
-            $definition = $this->definitionObject($definition);
             if (method_exists($definition, 'isRequired') && $definition->isRequired()) {
                 $required[] = $name;
             }
         }
 
         return $required;
-    }
-
-    protected function definitionObject(mixed $definition): object
-    {
-        if (!is_object($definition)) {
-            throw $this->error('Serializer definitions must be objects');
-        }
-
-        return $definition;
-    }
-
-    protected function typeForEntity(object $entity): string
-    {
-        return $this->typeForClass($entity::class);
     }
 
     protected function typeForClass(string $class): string
@@ -274,37 +241,15 @@ class Parser
         return (new \ReflectionClass($class))->getShortName();
     }
 
-    protected function idForEntity(object $entity): ?string
-    {
-        if (method_exists($entity, 'getId')) {
-            return (string) $entity->getId();
-        }
-        if (property_exists($entity, 'id') && $entity->id !== null) {
-            return (string) $entity->id;
-        }
-
-        return null;
-    }
-
     protected function findEntity(array $entities, string $id): ?object
     {
         foreach ($entities as $entity) {
-            if ($this->idForEntity($entity) === $id) {
+            if ($this->serializer->getId($entity) === $id) {
                 return $entity;
             }
         }
 
         return null;
-    }
-
-    protected function assertValid(mixed $value, Constraint|array $constraints, string $path): void
-    {
-        $violations = $this->validator->validate($value, $constraints);
-        if (count($violations) === 0) {
-            return;
-        }
-
-        throw new JsonApiException($this->errorsFromViolations($violations, $path));
     }
 
     protected function errorsForValue(mixed $value, Constraint|array $constraints, string $path): array
@@ -319,7 +264,12 @@ class Parser
 
     protected function validateInput(InputData $input, Constraint|array $constraints, string $path): void
     {
-        $this->assertValid($input->getData(), $constraints, $path);
+        $violations = $this->validator->validate($input->getData(), $constraints);
+        if (count($violations) === 0) {
+            return;
+        }
+
+        throw new JsonApiException($this->errorsFromViolations($violations, $path));
     }
 
     protected function resourceIdentifierConstraint(string $relationshipName, object $definition): Constraint

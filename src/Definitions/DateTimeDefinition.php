@@ -4,83 +4,61 @@ declare(strict_types=1);
 
 namespace Rhinox\JsonApi\Definitions;
 
-use Symfony\Component\Validator\Constraints as Assert;
+use Symfony\Component\Validator\Constraints;
 
-class DateTimeDefinition
+class DateTimeDefinition extends Definition
 {
-    public function __construct(
-        private string $name,
-        private bool $required = false,
-        private array $constraints = [],
-    ) {
+    public function castValue(mixed $value): ?array
+    {
+        if ($value instanceof \DateTimeInterface) {
+            return [
+                'date' => $value->format('Y-m-d'),
+                'time' => $value->format('H:i:s'),
+                'timeZone' => $value->getTimezone()->getName(),
+            ];
+        }
+
+        return null;
     }
 
-    public function getName(): string
+    protected function parseValue(mixed $value): ?\DateTimeInterface
     {
-        return $this->name;
-    }
-
-    public function getValue(object $entity): ?array
-    {
-        $getter = 'get' . ucfirst($this->name);
-        $value = $entity->$getter();
-
-        if (!$value instanceof \DateTimeInterface) {
+        if ($value === null) {
             return null;
         }
 
-        return [
-            'date' => $value->format('Y-m-d'),
-            'time' => $value->format('H:i:s'),
-            'timeZone' => $value->getTimezone()->getName(),
-        ];
-    }
-
-    public function setValue(object $entity, mixed $value): void
-    {
-        $setter = 'set' . ucfirst($this->name);
-        if ($value === null || $value instanceof \DateTimeInterface) {
-            $entity->$setter($value);
-            return;
-        }
-
+        // @todo should parsing always be input data?
         $value = is_object($value) ? (array) $value : $value;
-        $entity->$setter(new \DateTimeImmutable(
+        return new \DateTimeImmutable(
             $value['date'] . ' ' . $value['time'],
             new \DateTimeZone($value['timeZone']),
-        ));
+        );
     }
 
     public function getConstraints(): array
     {
         return [
-            ...($this->required ? [new Assert\NotBlank()] : []),
-            new Assert\AtLeastOneOf([
-                new Assert\Collection(
+            ...($this->getRequired() ? [new Constraints\NotBlank()] : []),
+            new Constraints\AtLeastOneOf([
+                new Constraints\Collection(
                     fields: [
-                        'date' => new Assert\Required([
-                            new Assert\NotBlank(),
-                            new Assert\Date(),
+                        'date' => new Constraints\Required([
+                            new Constraints\NotBlank(),
+                            new Constraints\Date(),
                         ]),
-                        'time' => new Assert\Required([
-                            new Assert\NotBlank(),
-                            new Assert\Time(),
+                        'time' => new Constraints\Required([
+                            new Constraints\NotBlank(),
+                            new Constraints\Time(),
                         ]),
-                        'timeZone' => new Assert\Required([
-                            new Assert\NotBlank(),
-                            new Assert\Timezone(),
+                        'timeZone' => new Constraints\Required([
+                            new Constraints\NotBlank(),
+                            new Constraints\Timezone(),
                         ]),
                     ],
                     allowExtraFields: false,
                 ),
-                new Assert\IsNull(),
+                new Constraints\IsNull(),
             ]),
-            ...$this->constraints,
         ];
-    }
-
-    public function isRequired(): bool
-    {
-        return $this->required;
     }
 }

@@ -14,6 +14,9 @@ use Rhinox\JsonApi\Tests\Example\TestEntitySerializer;
 use Rhinox\JsonApi\Tests\Example\TypedEntity;
 use Rhinox\JsonApi\Tests\Example\TypedEntitySerializer;
 
+// @todo test rejecting parsing with ID
+// @todo test it allows missing optional attributes
+// @todo test parsing relationships both to-one and to-many, new and existing, and with included data
 class ParserTest extends TestCase
 {
     public function testParseDocument(): void
@@ -22,9 +25,16 @@ class ParserTest extends TestCase
             {
                 "data": {
                     "type": "TestEntity",
-                    "id": "2",
                     "attributes": {
-                        "name": "Test Object"
+                        "stringTest": "Test Object",
+                        "intTest": 42,
+                        "floatTest": 3.14,
+                        "boolTest": true,
+                        "dateTimeTest": {
+                            "date": "2024-01-01",
+                            "time": "12:00:00",
+                            "timeZone": "Pacific/Auckland"
+                        }
                     },
                     "relationships": {
                         "related": {
@@ -40,26 +50,38 @@ class ParserTest extends TestCase
 
         $serializer = new TestEntitySerializer();
         $parser = new Parser($serializer);
-        $entity = new TestEntity(2);
+        $entity = new TestEntity();
 
         $parser->parse($entity, $jsonApi);
 
-        $this->assertSame('Test Object', $entity->getName());
+        $this->assertSame('Test Object', $entity->getStringTest());
+        $this->assertSame(42, $entity->getIntTest());
+        $this->assertSame(3.14, $entity->getFloatTest());
+        $this->assertTrue($entity->getBoolTest());
+        $this->assertSame('2024-01-01 12:00:00', $entity->getDateTimeTest()?->format('Y-m-d H:i:s'));
+        $this->assertSame('Pacific/Auckland', $entity->getDateTimeTest()->getTimezone()->getName());
         $this->assertSame('5', $entity->getRelatedId());
     }
 
     public function testRejectsUnknownAttributes(): void
     {
         $parser = new Parser(new TestEntitySerializer());
-        $entity = new TestEntity(2);
+        $entity = new TestEntity();
 
         try {
             $parser->parse($entity, new InputData([
                 'data' => [
                     'type' => 'TestEntity',
-                    'id' => '2',
                     'attributes' => [
-                        'name' => 'Test Object',
+                        "stringTest" => "Test Object",
+                        "intTest" => 42,
+                        "floatTest" => 3.14,
+                        "boolTest" => true,
+                        "dateTimeTest" => [
+                            "date" => "2024-01-01",
+                            "time" => "12:00:00",
+                            "timeZone" => "Pacific/Auckland"
+                        ],
                         'unknown' => 'value',
                     ],
                 ],
@@ -86,7 +108,7 @@ class ParserTest extends TestCase
     public function testReturnsMultipleJsonApiErrors(): void
     {
         $parser = new Parser(new TestEntitySerializer());
-        $entity = new TestEntity(2);
+        $entity = new TestEntity();
 
         try {
             $parser->parse($entity, new InputData([
@@ -94,6 +116,14 @@ class ParserTest extends TestCase
                     'type' => 'TestEntity',
                     'id' => '2',
                     'attributes' => [
+                        "intTest" => 42,
+                        "floatTest" => 3.14,
+                        "boolTest" => true,
+                        "dateTimeTest" => [
+                            "date" => "2024-01-01",
+                            "time" => "12:00:00",
+                            "timeZone" => "Pacific/Auckland"
+                        ],
                         'unknown' => 'value',
                     ],
                 ],
@@ -111,10 +141,10 @@ class ParserTest extends TestCase
                 [
                     'status' => '422',
                     'source' => [
-                        'pointer' => '/data/attributes',
+                        'pointer' => '/data/attributes/stringTest',
                     ],
                     'title' => 'Invalid Attribute',
-                    'detail' => 'JSON:API attribute "name" is required',
+                    'detail' => 'This value should not be blank.',
                 ],
             ], $exception->getErrors());
             $this->assertSame(['errors' => $exception->getErrors()], $exception->jsonSerialize());
@@ -127,7 +157,7 @@ class ParserTest extends TestCase
     public function testRejectsTypeMismatch(): void
     {
         $parser = new Parser(new TestEntitySerializer());
-        $entity = new TestEntity(2);
+        $entity = new TestEntity();
 
         $this->expectException(SerializerException::class);
         $this->expectExceptionMessage('JSON:API resource type must be "TestEntity", "OtherEntity" given');
@@ -135,7 +165,6 @@ class ParserTest extends TestCase
         $parser->parse($entity, new InputData([
             'data' => [
                 'type' => 'OtherEntity',
-                'id' => '2',
                 'attributes' => [
                     'name' => 'Test Object',
                 ],
@@ -155,9 +184,9 @@ class ParserTest extends TestCase
                 ],
             ]));
         } catch (JsonApiException $exception) {
-            $this->assertSame('/data/attributes', $exception->getErrors()[0]['source']['pointer']);
+            $this->assertSame('/data/attributes/stringTest', $exception->getErrors()[0]['source']['pointer']);
             $this->assertSame('Invalid Attribute', $exception->getErrors()[0]['title']);
-            $this->assertSame('JSON:API attribute "name" is required', $exception->getErrors()[0]['detail']);
+            $this->assertSame('This value should not be blank.', $exception->getErrors()[0]['detail']);
             return;
         }
 
@@ -167,7 +196,7 @@ class ParserTest extends TestCase
     public function testRejectsInvalidRelationshipType(): void
     {
         $parser = new Parser(new TestEntitySerializer());
-        $entity = new TestEntity(2);
+        $entity = new TestEntity();
 
         $this->expectException(SerializerException::class);
         $this->expectExceptionMessage('JSON:API relationship "related" type must be "TestRelatedEntity", "WrongType" given');
@@ -177,7 +206,15 @@ class ParserTest extends TestCase
                 'type' => 'TestEntity',
                 'id' => '2',
                 'attributes' => [
-                    'name' => 'Test Object',
+                    'stringTest' => 'Test Object',
+                    'intTest' => 42,
+                    'floatTest' => 3.14,
+                    'boolTest' => true,
+                    'dateTimeTest' => [
+                        'date' => '2024-01-01',
+                        'time' => '12:00:00',
+                        'timeZone' => 'Pacific/Auckland',
+                    ],
                 ],
                 'relationships' => [
                     'related' => [

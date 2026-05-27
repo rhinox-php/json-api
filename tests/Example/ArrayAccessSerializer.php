@@ -4,11 +4,18 @@ declare(strict_types=1);
 
 namespace Rhinox\JsonApi\Tests\Example;
 
+use Rhinox\JsonApi\Access\ArrayAccess;
+use Rhinox\JsonApi\Define;
 use Rhinox\JsonApi\Serializer;
 
-// @tdo add JSON to the tests
-class TestEntitySerializer extends Serializer
+class ArrayAccessSerializer extends Serializer
 {
+    protected Define $define {
+        get {
+            return $this->define ??= new Define(new ArrayAccess());
+        }
+    }
+
     public function defineAttributes(): iterable
     {
         yield from $this->define->string('stringTest', required: true);
@@ -18,8 +25,8 @@ class TestEntitySerializer extends Serializer
         yield from $this->define->dateTime('dateTimeTest', required: true);
     }
 
-    public function defineRelationships(): iterable
+    public function getType(mixed &$entity): string
     {
-        yield from $this->define->single('related', TestRelatedEntitySerializer::class);
+        return 'TestEntity';
     }
 }

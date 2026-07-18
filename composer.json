@@ -1,5 +1,5 @@
 {
-    "name": "rhinox/json-api-serializer",
+    "name": "rhinox/json-api",
     "description": "A PHP library for serializing data according to the JSON:API specification",
     "type": "library",
     "license": "MIT",
